@@ -7,7 +7,7 @@ Windows 11 Disk Usage Monitor GUI
 """
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog, messagebox
 import threading
 import time
 import os
@@ -22,24 +22,28 @@ except ImportError:
     import psutil
 
 
-# ─── 색상/스타일 상수 ───────────────────────────────────────────────
-BG_DARK = "#1e1e2e"
-BG_CARD = "#2a2a3d"
-BG_HEADER = "#313145"
-FG_TEXT = "#cdd6f4"
-FG_DIM = "#6c7086"
-FG_ACCENT = "#89b4fa"
-FG_GREEN = "#a6e3a1"
-FG_RED = "#f38ba8"
-FG_YELLOW = "#f9e2af"
-FG_PEACH = "#fab387"
-FG_MAUVE = "#cba6f7"
-FG_TEAL = "#94e2d5"
-FG_SKY = "#89dceb"
-FG_PINK = "#f5c2e7"
-BAR_BG = "#45475a"
+# ─── 색상/스타일 상수 (밝은 파스텔 테마) ──────────────────────────────
+BG_DARK = "#faf5ff"       # 연한 라벤더 배경
+BG_CARD = "#ffffff"       # 흰색 카드
+BG_HEADER = "#e8def8"     # 연보라 헤더
+FG_TEXT = "#3b3145"       # 진한 보라 텍스트
+FG_DIM = "#9585a8"        # 연한 보라 보조 텍스트
+FG_ACCENT = "#7c4dff"     # 포인트 보라
+FG_GREEN = "#4caf50"      # 초록
+FG_RED = "#e91e63"        # 핑크 레드
+FG_YELLOW = "#ff9800"     # 주황
+FG_PEACH = "#ff7043"      # 피치
+FG_MAUVE = "#ab47bc"      # 모브
+FG_TEAL = "#00bcd4"       # 틸
+FG_SKY = "#29b6f6"        # 하늘
+FG_PINK = "#f06292"       # 핑크
+BAR_BG = "#e0d6eb"        # 연보라 바 배경
 DRIVE_COLORS = [FG_ACCENT, FG_GREEN, FG_YELLOW, FG_PEACH, FG_MAUVE,
                 FG_TEAL, FG_SKY, FG_PINK, FG_RED]
+
+# ─── 귀여운 폰트 (플랫폼별 폴백) ─────────────────────────────────────
+FONT_FAMILY = "Comic Sans MS"  # Windows 기본 귀여운 폰트
+FONT_MONO = "Comic Sans MS"    # 모노 대체
 
 
 def format_bytes(b):
@@ -84,8 +88,8 @@ def draw_bar(canvas, value, bar_width, bar_height):
         color = get_color_for_percent(value)
         draw_rounded_rect(canvas, 0, 0, fill_w, bar_height, r, fill=color)
     canvas.create_text(bar_width // 2, bar_height // 2,
-                       text=f"{value:.1f}%", fill="white",
-                       font=("Segoe UI", 9, "bold"))
+                       text=f"{value:.1f}%", fill=FG_TEXT,
+                       font=(FONT_FAMILY, 9, "bold"))
 
 
 def draw_pie(canvas, data, size):
@@ -107,7 +111,7 @@ def draw_pie(canvas, data, size):
                        size - pad - inner, size - pad - inner,
                        fill=BG_CARD, outline=BG_CARD)
     canvas.create_text(size // 2, size // 2, text="DISK",
-                       fill=FG_ACCENT, font=("Segoe UI", 10, "bold"))
+                       fill=FG_ACCENT, font=(FONT_FAMILY, 10, "bold"))
 
 
 def draw_bar_chart(canvas, data, chart_w, chart_h):
@@ -125,7 +129,7 @@ def draw_bar_chart(canvas, data, chart_w, chart_h):
     for i, (label, pct, color) in enumerate(data):
         y = pad_top + i * (bar_h + gap)
         canvas.create_text(pad_left - 5, y + bar_h // 2, text=label,
-                           anchor="e", fill=FG_TEXT, font=("Segoe UI", 9))
+                           anchor="e", fill=FG_TEXT, font=(FONT_FAMILY, 9))
         bw = chart_w - pad_left - pad_right
         draw_rounded_rect(canvas, pad_left, y, pad_left + bw, y + bar_h,
                           bar_h // 2, fill=BAR_BG)
@@ -136,7 +140,7 @@ def draw_bar_chart(canvas, data, chart_w, chart_h):
         canvas.create_text(pad_left + bw + 8, y + bar_h // 2,
                            text=f"{pct:.1f}%", anchor="w",
                            fill=get_color_for_percent(pct),
-                           font=("Segoe UI", 9, "bold"))
+                           font=(FONT_FAMILY, 9, "bold"))
 
 
 def make_canvas(parent, w, h):
@@ -232,7 +236,7 @@ class DiskMonitorApp:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Disk Usage Monitor - Windows 11")
+        self.root.title("Disk Usage Monitor")
         self.root.configure(bg=BG_DARK)
         self.root.geometry("1150x800")
         self.root.minsize(950, 650)
@@ -261,27 +265,31 @@ class DiskMonitorApp:
         available = style.theme_names()
         if "clam" in available:
             style.theme_use("clam")
-        style.configure("Dark.Treeview",
+        style.configure("Light.Treeview",
                          background=BG_CARD, foreground=FG_TEXT,
-                         fieldbackground=BG_CARD, rowheight=26,
-                         font=("Segoe UI", 9))
-        style.configure("Dark.Treeview.Heading",
+                         fieldbackground=BG_CARD, rowheight=28,
+                         font=(FONT_FAMILY, 9))
+        style.configure("Light.Treeview.Heading",
                          background=BG_HEADER, foreground=FG_ACCENT,
-                         font=("Segoe UI", 9, "bold"), relief="flat")
-        style.map("Dark.Treeview",
-                   background=[("selected", "#45475a")],
-                   foreground=[("selected", "white")])
+                         font=(FONT_FAMILY, 9, "bold"), relief="flat")
+        style.map("Light.Treeview",
+                   background=[("selected", "#d1c4e9")],
+                   foreground=[("selected", FG_TEXT)])
 
     def _build_ui(self):
         # ─── 헤더 ───
         header = tk.Frame(self.root, bg=BG_HEADER, pady=8)
         header.pack(fill="x")
         tk.Label(header, text="  Disk Usage Monitor", bg=BG_HEADER,
-                 fg=FG_ACCENT, font=("Segoe UI", 16, "bold")).pack(side="left", padx=10)
+                 fg=FG_ACCENT, font=(FONT_FAMILY, 16, "bold")).pack(side="left", padx=10)
         tk.Button(header, text="새로고침", bg=BG_CARD, fg=FG_TEXT,
-                  font=("Segoe UI", 9), relief="flat", padx=12, pady=2,
-                  activebackground="#45475a", activeforeground="white",
+                  font=(FONT_FAMILY, 9), relief="flat", padx=12, pady=2,
+                  activebackground="#d1c4e9", activeforeground=FG_TEXT,
                   command=self._refresh_drives).pack(side="right", padx=16)
+        tk.Button(header, text="TXT 내보내기", bg=BG_CARD, fg=FG_TEXT,
+                  font=(FONT_FAMILY, 9), relief="flat", padx=12, pady=2,
+                  activebackground="#d1c4e9", activeforeground=FG_TEXT,
+                  command=self._export_txt).pack(side="right", padx=4)
 
         # ─── 상단: 드라이브 카드들 ───
         self.drives_frame = tk.Frame(self.root, bg=BG_DARK, pady=6)
@@ -295,7 +303,7 @@ class DiskMonitorApp:
         pie_outer = tk.Frame(mid_frame, bg=BG_CARD, padx=10, pady=8)
         pie_outer.pack(side="left", padx=4, anchor="n")
         tk.Label(pie_outer, text="드라이브별 사용량 분포", bg=BG_CARD,
-                 fg=FG_TEXT, font=("Segoe UI", 10, "bold")).pack()
+                 fg=FG_TEXT, font=(FONT_FAMILY, 10, "bold")).pack()
         self.pie_canvas = make_canvas(pie_outer, self.PIE_SIZE, self.PIE_SIZE)
         self.pie_canvas.pack(pady=4)
         self.pie_legend = tk.Frame(pie_outer, bg=BG_CARD)
@@ -305,7 +313,7 @@ class DiskMonitorApp:
         chart_outer = tk.Frame(mid_frame, bg=BG_CARD, padx=10, pady=8)
         chart_outer.pack(side="left", fill="x", expand=True, padx=4, anchor="n")
         tk.Label(chart_outer, text="드라이브별 사용률 비교", bg=BG_CARD,
-                 fg=FG_TEXT, font=("Segoe UI", 10, "bold")).pack()
+                 fg=FG_TEXT, font=(FONT_FAMILY, 10, "bold")).pack()
         self.chart_canvas = make_canvas(chart_outer, self.CHART_W, self.CHART_H)
         self.chart_canvas.pack(pady=4)
 
@@ -313,7 +321,7 @@ class DiskMonitorApp:
         detail_outer = tk.Frame(mid_frame, bg=BG_CARD, padx=14, pady=8)
         detail_outer.pack(side="left", fill="x", expand=True, padx=4, anchor="n")
         tk.Label(detail_outer, text="드라이브 상세 정보", bg=BG_CARD,
-                 fg=FG_TEXT, font=("Segoe UI", 10, "bold")).pack(anchor="w")
+                 fg=FG_TEXT, font=(FONT_FAMILY, 10, "bold")).pack(anchor="w")
 
         self.detail_labels = {}
         for key, name in [("drive", "드라이브"), ("fstype", "파일 시스템"),
@@ -323,9 +331,9 @@ class DiskMonitorApp:
             row = tk.Frame(detail_outer, bg=BG_CARD)
             row.pack(fill="x", pady=2)
             tk.Label(row, text=f"{name}:", bg=BG_CARD, fg=FG_DIM,
-                     font=("Segoe UI", 9), width=12, anchor="w").pack(side="left")
+                     font=(FONT_FAMILY, 9), width=12, anchor="w").pack(side="left")
             lbl = tk.Label(row, text="--", bg=BG_CARD, fg=FG_TEXT,
-                           font=("Segoe UI", 9, "bold"), anchor="w")
+                           font=(FONT_FAMILY, 9, "bold"), anchor="w")
             lbl.pack(side="left", fill="x")
             self.detail_labels[key] = lbl
 
@@ -335,16 +343,16 @@ class DiskMonitorApp:
 
         self.folder_title = tk.Label(
             list_header, text="폴더/파일별 크기 (드라이브를 클릭하세요)",
-            bg=BG_DARK, fg=FG_TEXT, font=("Segoe UI", 11, "bold"))
+            bg=BG_DARK, fg=FG_TEXT, font=(FONT_FAMILY, 11, "bold"))
         self.folder_title.pack(side="left")
 
         search_frame = tk.Frame(list_header, bg=BG_DARK)
         search_frame.pack(side="right")
         tk.Label(search_frame, text="검색:", bg=BG_DARK, fg=FG_DIM,
-                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+                 font=(FONT_FAMILY, 9)).pack(side="left", padx=(0, 4))
         tk.Entry(search_frame, textvariable=self._search_var,
                  bg=BG_CARD, fg=FG_TEXT, insertbackground=FG_TEXT,
-                 font=("Segoe UI", 9), width=20,
+                 font=(FONT_FAMILY, 9), width=20,
                  relief="flat", bd=4).pack(side="left")
 
         # 트리뷰
@@ -353,7 +361,7 @@ class DiskMonitorApp:
 
         columns = ("name", "size", "bar", "path")
         self.tree = ttk.Treeview(tree_frame, columns=columns,
-                                  show="headings", style="Dark.Treeview",
+                                  show="headings", style="Light.Treeview",
                                   selectmode="browse")
 
         col_config = [
@@ -381,16 +389,16 @@ class DiskMonitorApp:
         self._heartbeat_on = True
         self._heartbeat_label = tk.Label(
             status_bar, text="\u25cf", bg=BG_HEADER, fg=FG_GREEN,
-            font=("Segoe UI", 10))
+            font=(FONT_FAMILY, 10))
         self._heartbeat_label.pack(side="left", padx=(10, 0))
         self._heartbeat_text = tk.Label(
             status_bar, text="동작 중", bg=BG_HEADER, fg=FG_GREEN,
-            font=("Segoe UI", 8))
+            font=(FONT_FAMILY, 8))
         self._heartbeat_text.pack(side="left", padx=(2, 6))
 
         self.status_label = tk.Label(status_bar, text="준비 중...",
                                       bg=BG_HEADER, fg=FG_DIM,
-                                      font=("Segoe UI", 8))
+                                      font=(FONT_FAMILY, 8))
         self.status_label.pack(side="left", padx=4)
 
     # ─── 드라이브 카드 ─────────────────────────────────────────────
@@ -427,13 +435,13 @@ class DiskMonitorApp:
             drive_label = part.mountpoint.rstrip("\\") or part.device
 
             tk.Label(card, text=f"  {drive_label}", bg=BG_CARD, fg=color,
-                     font=("Segoe UI", 14, "bold")).pack(anchor="w")
+                     font=(FONT_FAMILY, 14, "bold")).pack(anchor="w")
             tk.Label(card, text=f"{part.fstype}", bg=BG_CARD, fg=FG_DIM,
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=(FONT_FAMILY, 8)).pack(anchor="w")
 
             pct_color = get_color_for_percent(usage.percent)
             tk.Label(card, text=f"{usage.percent:.1f}% 사용", bg=BG_CARD,
-                     fg=pct_color, font=("Segoe UI", 11, "bold")).pack(anchor="w")
+                     fg=pct_color, font=(FONT_FAMILY, 11, "bold")).pack(anchor="w")
 
             # 텍스트 기반 프로그레스 바 (Canvas 대신 Label 사용)
             pct_int = int(usage.percent)
@@ -441,12 +449,12 @@ class DiskMonitorApp:
             bar_empty = "\u2591" * (20 - pct_int // 5)
             bar_color = get_color_for_percent(usage.percent)
             tk.Label(card, text=bar_filled + bar_empty, bg=BG_CARD, fg=bar_color,
-                     font=("Consolas", 9)).pack(anchor="w", pady=(2, 0))
+                     font=(FONT_MONO, 9)).pack(anchor="w", pady=(2, 0))
 
             tk.Label(card, text=f"{format_bytes(usage.used)} / {format_bytes(usage.total)}",
-                     bg=BG_CARD, fg=FG_DIM, font=("Segoe UI", 8)).pack(anchor="w")
+                     bg=BG_CARD, fg=FG_DIM, font=(FONT_FAMILY, 8)).pack(anchor="w")
             tk.Label(card, text=f"{format_bytes(usage.free)} 여유",
-                     bg=BG_CARD, fg=FG_GREEN, font=("Segoe UI", 8)).pack(anchor="w")
+                     bg=BG_CARD, fg=FG_GREEN, font=(FONT_FAMILY, 8)).pack(anchor="w")
 
             mp = part.mountpoint
             card.bind("<Button-1>", lambda e, m=mp: self._on_drive_click(m))
@@ -484,9 +492,9 @@ class DiskMonitorApp:
             row = tk.Frame(self.pie_legend, bg=BG_CARD)
             row.pack(fill="x", pady=0)
             tk.Label(row, text=" \u25a0", bg=BG_CARD, fg=color,
-                     font=("Segoe UI", 9)).pack(side="left")
+                     font=(FONT_FAMILY, 9)).pack(side="left")
             tk.Label(row, text=f" {label}  {format_bytes(d['used'])} / {format_bytes(d['total'])}",
-                     bg=BG_CARD, fg=FG_TEXT, font=("Segoe UI", 8)).pack(side="left")
+                     bg=BG_CARD, fg=FG_TEXT, font=(FONT_FAMILY, 8)).pack(side="left")
 
         # 막대차트
         bar_data = []
@@ -707,6 +715,61 @@ class DiskMonitorApp:
             except (PermissionError, OSError):
                 continue
         self._update_charts()
+
+    def _export_txt(self):
+        """스캔 결과를 TXT 파일로 내보내기"""
+        if not self._folder_data:
+            messagebox.showinfo("내보내기", "내보낼 스캔 결과가 없습니다.\n먼저 드라이브를 클릭하여 스캔하세요.")
+            return
+
+        default_name = f"disk_scan_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("텍스트 파일", "*.txt"), ("모든 파일", "*.*")],
+            initialfile=default_name,
+            title="스캔 결과 내보내기")
+        if not filepath:
+            return
+
+        try:
+            drive_label = self._selected_drive.get().rstrip("\\") or "Unknown"
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write("=" * 60 + "\n")
+                f.write("  Disk Usage Monitor - 스캔 결과 보고서\n")
+                f.write(f"  생성 시각: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("=" * 60 + "\n\n")
+
+                # 드라이브 정보
+                for d in self._drives:
+                    if d["mountpoint"] == self._selected_drive.get():
+                        f.write(f"  드라이브: {drive_label} ({d['device']})\n")
+                        f.write(f"  파일 시스템: {d['fstype']}\n")
+                        f.write(f"  전체 용량: {format_bytes(d['total'])}\n")
+                        f.write(f"  사용 중: {format_bytes(d['used'])} ({d['percent']:.1f}%)\n")
+                        f.write(f"  사용 가능: {format_bytes(d['free'])}\n")
+                        f.write("\n")
+                        break
+
+                # 폴더 목록
+                f.write("-" * 60 + "\n")
+                f.write(f"  {'이름':<30} {'크기':>12}  경로\n")
+                f.write("-" * 60 + "\n")
+
+                sorted_data = sorted(self._folder_data,
+                                     key=lambda x: x["size"], reverse=True)
+                for item in sorted_data:
+                    name = item["name"][:28]
+                    size = format_bytes(item["size"])
+                    f.write(f"  {name:<30} {size:>12}  {item['path']}\n")
+
+                f.write("-" * 60 + "\n")
+                f.write(f"  총 {len(sorted_data)}개 항목\n")
+
+            self.status_label.config(text=f"내보내기 완료: {filepath}")
+            messagebox.showinfo("내보내기 완료",
+                                f"스캔 결과가 저장되었습니다.\n{filepath}")
+        except Exception as e:
+            messagebox.showerror("내보내기 오류", f"파일 저장 중 오류:\n{e}")
 
     def _start_heartbeat(self):
         """상태바의 활성 표시기를 주기적으로 깜빡여 프로그램 동작을 표시"""
