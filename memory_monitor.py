@@ -502,55 +502,101 @@ class DiskMonitorApp:
         self._scan_drive(mountpoint)
 
     def _scan_drive(self, mountpoint):
-        """별도 스레드에서 드라이브 폴더 스캔 (진행률 표시)"""
+        """별도 스레드에서 드라이브 폴더 스캔 (진행률 + 예상 남은 시간 표시)"""
         if self._scanning:
             return
         self._scanning = True
         label = mountpoint.rstrip("\\") or mountpoint
 
-        def update_progress(current, total, folder_name, phase):
+        def format_eta(seconds):
+            """초를 읽기 쉬운 시간 문자열로 변환"""
+            if seconds < 0:
+                return "계산 중..."
+            if seconds < 60:
+                return f"약 {int(seconds)}초"
+            minutes = int(seconds) // 60
+            secs = int(seconds) % 60
+            if minutes < 60:
+                return f"약 {minutes}분 {secs}초"
+            hours = minutes // 60
+            mins = minutes % 60
+            return f"약 {hours}시간 {mins}분"
+
+        def update_progress(current, total, folder_name, phase,
+                            elapsed=0, eta_str=""):
             if phase == "list":
                 self.folder_title.config(
-                    text=f"{label} 드라이브 - 폴더 목록 수집 중... ({current}개 발견)")
+                    text=f"{label} 드라이브 - 폴더 목록 수집 중... "
+                         f"({current}개 발견)")
                 self.status_label.config(
                     text=f"스캔: {label} 폴더 목록 수집 중...")
             elif phase == "deep":
                 pct = int(current / total * 100) if total > 0 else 0
                 bar = "\u2588" * (pct // 5) + "\u2591" * (20 - pct // 5)
+                elapsed_str = format_eta(elapsed)
                 self.folder_title.config(
                     text=f"{label} 드라이브 - 정밀 스캔 중... "
-                         f"[{bar}] {current}/{total} ({pct}%) - {folder_name}")
+                         f"[{bar}] {current}/{total} ({pct}%) - {folder_name}"
+                         f"  |  남은 시간: {eta_str}")
                 self.status_label.config(
-                    text=f"스캔: {folder_name} 분석 중... ({current}/{total})")
+                    text=f"스캔: {folder_name} ({current}/{total}) | "
+                         f"경과: {elapsed_str} | 남은 시간: {eta_str}")
+            elif phase == "done":
+                self.folder_title.config(
+                    text=f"{label} 드라이브 - 폴더/파일별 크기 "
+                         f"(스캔 완료 - 소요 시간: {eta_str})")
+                self.status_label.config(
+                    text=f"스캔 완료: {label} | {current}개 항목 | "
+                         f"소요: {eta_str} | {time.strftime('%H:%M:%S')}")
 
         def do_scan():
             try:
+                scan_start = time.time()
                 self.root.after(0, update_progress, 0, 0, "", "list")
                 folders = get_top_folders(mountpoint)
                 self.root.after(0, update_progress, len(folders), 0, "", "list")
 
-                scan_targets = [f for f in folders[:15] if os.path.isdir(f["path"])]
+                scan_targets = [f for f in folders[:15]
+                                if os.path.isdir(f["path"])]
                 total = len(scan_targets)
+                folder_times = []  # 각 폴더 스캔 소요 시간 기록
 
                 for idx, f in enumerate(scan_targets):
                     if not self._running:
                         break
+
                     name = f["name"]
-                    self.root.after(0, update_progress, idx + 1, total, name, "deep")
+                    elapsed = time.time() - scan_start
+
+                    # ETA 계산: 지금까지 평균 속도 기반
+                    if folder_times:
+                        avg_time = sum(folder_times) / len(folder_times)
+                        remaining = (total - idx) * avg_time
+                        eta_str = format_eta(remaining)
+                    else:
+                        eta_str = "계산 중..."
+
+                    self.root.after(0, update_progress, idx + 1, total,
+                                   name, "deep", elapsed, eta_str)
+
+                    folder_start = time.time()
                     f["size"] = get_folder_size_deep(f["path"])
+                    folder_elapsed = time.time() - folder_start
+                    folder_times.append(folder_elapsed)
+
                     folders.sort(key=lambda x: x["size"], reverse=True)
                     self._folder_data = list(folders)
                     self.root.after(0, self._update_folder_list)
+
+                total_elapsed = time.time() - scan_start
+                total_str = format_eta(total_elapsed)
 
                 folders.sort(key=lambda x: x["size"], reverse=True)
                 self._folder_data = folders
                 self._scanning = False
                 self.root.after(0, self._update_folder_list)
-                self.root.after(0, lambda: self.folder_title.config(
-                    text=f"{label} 드라이브 - 폴더/파일별 크기 (스캔 완료)"))
-                self.root.after(0, lambda: self.status_label.config(
-                    text=f"스캔 완료: {label} | {len(folders)}개 항목 | "
-                         f"{time.strftime('%H:%M:%S')}"))
+                self.root.after(0, update_progress, len(folders), total,
+                               "", "done", 0, total_str)
             except Exception as e:
                 self._scanning = False
                 self.root.after(0, lambda: self.status_label.config(
