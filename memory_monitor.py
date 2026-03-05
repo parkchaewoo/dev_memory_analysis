@@ -1,6 +1,9 @@
 """
 Windows 11 Disk Usage Monitor GUI
 드라이브별 저장 공간 사용량을 실시간으로 시각화하는 도구
+
+사용법: python memory_monitor.py
+필요 패키지: pip install psutil
 """
 
 import tkinter as tk
@@ -9,6 +12,7 @@ import threading
 import time
 import os
 import sys
+import traceback
 
 try:
     import psutil
@@ -60,7 +64,7 @@ def get_color_for_percent(pct):
 
 # ─── 캔버스 그리기 함수들 ────────────────────────────────────────────
 
-def _rounded_rect(canvas, x1, y1, x2, y2, r, **kwargs):
+def draw_rounded_rect(canvas, x1, y1, x2, y2, r, **kwargs):
     """둥근 사각형 그리기"""
     points = [
         x1 + r, y1, x2 - r, y1, x2, y1, x2, y1 + r,
@@ -74,11 +78,11 @@ def draw_bar(canvas, value, bar_width, bar_height):
     """프로그레스 바를 캔버스에 그리기"""
     canvas.delete("all")
     r = bar_height // 2
-    _rounded_rect(canvas, 0, 0, bar_width, bar_height, r, fill=BAR_BG)
+    draw_rounded_rect(canvas, 0, 0, bar_width, bar_height, r, fill=BAR_BG)
     if value > 0:
         fill_w = max(bar_height, bar_width * value / 100)
         color = get_color_for_percent(value)
-        _rounded_rect(canvas, 0, 0, fill_w, bar_height, r, fill=color)
+        draw_rounded_rect(canvas, 0, 0, fill_w, bar_height, r, fill=color)
     canvas.create_text(bar_width // 2, bar_height // 2,
                        text=f"{value:.1f}%", fill="white",
                        font=("Segoe UI", 9, "bold"))
@@ -114,37 +118,38 @@ def draw_bar_chart(canvas, data, chart_w, chart_h):
     pad_left = 50
     pad_right = 60
     pad_top = 10
-    pad_bottom = 10
     n = len(data)
-    bar_area_h = chart_h - pad_top - pad_bottom
-    bar_h = min(30, max(16, (bar_area_h - (n - 1) * 6) // n))
+    bar_h = min(30, max(16, (chart_h - pad_top * 2 - (n - 1) * 6) // n))
     gap = 6
 
     for i, (label, pct, color) in enumerate(data):
         y = pad_top + i * (bar_h + gap)
-        # 라벨
         canvas.create_text(pad_left - 5, y + bar_h // 2, text=label,
                            anchor="e", fill=FG_TEXT, font=("Segoe UI", 9))
-        # 배경 바
         bw = chart_w - pad_left - pad_right
-        _rounded_rect(canvas, pad_left, y, pad_left + bw, y + bar_h,
-                       bar_h // 2, fill=BAR_BG)
-        # 채우기
+        draw_rounded_rect(canvas, pad_left, y, pad_left + bw, y + bar_h,
+                          bar_h // 2, fill=BAR_BG)
         if pct > 0:
             fill_w = max(bar_h, bw * pct / 100)
-            _rounded_rect(canvas, pad_left, y, pad_left + fill_w, y + bar_h,
-                           bar_h // 2, fill=color)
-        # 퍼센트 텍스트
+            draw_rounded_rect(canvas, pad_left, y, pad_left + fill_w, y + bar_h,
+                              bar_h // 2, fill=color)
         canvas.create_text(pad_left + bw + 8, y + bar_h // 2,
                            text=f"{pct:.1f}%", anchor="w",
                            fill=get_color_for_percent(pct),
                            font=("Segoe UI", 9, "bold"))
 
 
+def make_canvas(parent, w, h):
+    """안전하게 Canvas 생성 (Windows 호환)"""
+    c = tk.Canvas(parent)
+    c.config(bg=BG_CARD, highlightthickness=0, width=w, height=h)
+    return c
+
+
 # ─── 폴더 크기 스캔 ──────────────────────────────────────────────────
 
-def get_top_folders(path, max_depth=1):
-    """드라이브 루트의 최상위 폴더별 크기 측정"""
+def get_top_folders(path):
+    """드라이브 루트의 최상위 폴더별 크기 측정 (빠른 1단계)"""
     folders = []
     try:
         entries = list(os.scandir(path))
@@ -155,22 +160,19 @@ def get_top_folders(path, max_depth=1):
         if entry.is_dir(follow_symlinks=False):
             total_size = 0
             try:
-                if max_depth <= 1:
-                    # 1단계만 빠르게 스캔
-                    for sub in os.scandir(entry.path):
-                        try:
-                            if sub.is_file(follow_symlinks=False):
-                                total_size += sub.stat().st_size
-                            elif sub.is_dir(follow_symlinks=False):
-                                # 하위 폴더는 대략적 추정 (첫 단계 파일만)
-                                for subsub in os.scandir(sub.path):
-                                    try:
-                                        if subsub.is_file(follow_symlinks=False):
-                                            total_size += subsub.stat().st_size
-                                    except (PermissionError, OSError):
-                                        continue
-                        except (PermissionError, OSError):
-                            continue
+                for sub in os.scandir(entry.path):
+                    try:
+                        if sub.is_file(follow_symlinks=False):
+                            total_size += sub.stat().st_size
+                        elif sub.is_dir(follow_symlinks=False):
+                            for subsub in os.scandir(sub.path):
+                                try:
+                                    if subsub.is_file(follow_symlinks=False):
+                                        total_size += subsub.stat().st_size
+                                except (PermissionError, OSError):
+                                    continue
+                    except (PermissionError, OSError):
+                        continue
                 folders.append({"name": entry.name, "path": entry.path,
                                 "size": total_size})
             except (PermissionError, OSError):
@@ -187,7 +189,7 @@ def get_top_folders(path, max_depth=1):
 
 
 def get_folder_size_deep(path):
-    """폴더의 전체 크기를 재귀적으로 측정 (별도 스레드용)"""
+    """폴더의 전체 크기를 재귀적으로 측정"""
     total = 0
     try:
         for dirpath, dirnames, filenames in os.walk(path):
@@ -209,8 +211,6 @@ class DiskMonitorApp:
     """메인 애플리케이션"""
 
     PIE_SIZE = 220
-    BAR_W = 400
-    BAR_H = 22
     CHART_W = 420
     CHART_H = 200
 
@@ -226,15 +226,34 @@ class DiskMonitorApp:
         self._sort_col = "size"
         self._sort_reverse = True
         self._search_var = tk.StringVar()
-        self._scan_status = ""
         self._folder_data = []
         self._scanning = False
+        self._drives = []
 
+        self._setup_styles()
         self._build_ui()
+        self.root.update_idletasks()
         self._refresh_drives()
         self._start_update()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _setup_styles(self):
+        """ttk 스타일 설정"""
+        style = ttk.Style()
+        available = style.theme_names()
+        if "clam" in available:
+            style.theme_use("clam")
+        style.configure("Dark.Treeview",
+                         background=BG_CARD, foreground=FG_TEXT,
+                         fieldbackground=BG_CARD, rowheight=26,
+                         font=("Segoe UI", 9))
+        style.configure("Dark.Treeview.Heading",
+                         background=BG_HEADER, foreground=FG_ACCENT,
+                         font=("Segoe UI", 9, "bold"), relief="flat")
+        style.map("Dark.Treeview",
+                   background=[("selected", "#45475a")],
+                   foreground=[("selected", "white")])
 
     def _build_ui(self):
         # ─── 헤더 ───
@@ -242,44 +261,40 @@ class DiskMonitorApp:
         header.pack(fill="x")
         tk.Label(header, text="  Disk Usage Monitor", bg=BG_HEADER,
                  fg=FG_ACCENT, font=("Segoe UI", 16, "bold")).pack(side="left", padx=10)
-        # 새로고침 버튼
-        btn = tk.Button(header, text="새로고침", bg=BG_CARD, fg=FG_TEXT,
-                        font=("Segoe UI", 9), relief="flat", padx=12, pady=2,
-                        activebackground="#45475a", activeforeground="white",
-                        command=self._refresh_drives)
-        btn.pack(side="right", padx=16)
+        tk.Button(header, text="새로고침", bg=BG_CARD, fg=FG_TEXT,
+                  font=("Segoe UI", 9), relief="flat", padx=12, pady=2,
+                  activebackground="#45475a", activeforeground="white",
+                  command=self._refresh_drives).pack(side="right", padx=16)
 
         # ─── 상단: 드라이브 카드들 ───
         self.drives_frame = tk.Frame(self.root, bg=BG_DARK, pady=6)
         self.drives_frame.pack(fill="x", padx=12)
 
-        # ─── 중간: 파이차트 + 비교 막대차트 ───
+        # ─── 중간: 파이차트 + 비교 막대차트 + 상세 ───
         mid_frame = tk.Frame(self.root, bg=BG_DARK, pady=4)
         mid_frame.pack(fill="x", padx=12)
 
-        # 왼쪽: 전체 디스크 파이차트
+        # 왼쪽: 파이차트
         pie_outer = tk.Frame(mid_frame, bg=BG_CARD, padx=10, pady=8)
         pie_outer.pack(side="left", padx=4, anchor="n")
         tk.Label(pie_outer, text="드라이브별 사용량 분포", bg=BG_CARD,
                  fg=FG_TEXT, font=("Segoe UI", 10, "bold")).pack()
-        self.pie_canvas = tk.Canvas(pie_outer, bg=BG_CARD, highlightthickness=0)
-        self.pie_canvas.configure(width=self.PIE_SIZE, height=self.PIE_SIZE)
+        self.pie_canvas = make_canvas(pie_outer, self.PIE_SIZE, self.PIE_SIZE)
         self.pie_canvas.pack(pady=4)
         self.pie_legend = tk.Frame(pie_outer, bg=BG_CARD)
         self.pie_legend.pack(fill="x")
 
-        # 가운데: 드라이브 비교 막대차트
+        # 가운데: 막대차트
         chart_outer = tk.Frame(mid_frame, bg=BG_CARD, padx=10, pady=8)
-        chart_outer.pack(side="left", fill="both", expand=True, padx=4, anchor="n")
+        chart_outer.pack(side="left", fill="x", expand=True, padx=4, anchor="n")
         tk.Label(chart_outer, text="드라이브별 사용률 비교", bg=BG_CARD,
                  fg=FG_TEXT, font=("Segoe UI", 10, "bold")).pack()
-        self.chart_canvas = tk.Canvas(chart_outer, bg=BG_CARD, highlightthickness=0)
-        self.chart_canvas.configure(width=self.CHART_W, height=self.CHART_H)
-        self.chart_canvas.pack(fill="both", expand=True, pady=4)
+        self.chart_canvas = make_canvas(chart_outer, self.CHART_W, self.CHART_H)
+        self.chart_canvas.pack(pady=4)
 
-        # 오른쪽: 선택된 드라이브 상세
+        # 오른쪽: 드라이브 상세
         detail_outer = tk.Frame(mid_frame, bg=BG_CARD, padx=14, pady=8)
-        detail_outer.pack(side="left", fill="both", expand=True, padx=4, anchor="n")
+        detail_outer.pack(side="left", fill="x", expand=True, padx=4, anchor="n")
         tk.Label(detail_outer, text="드라이브 상세 정보", bg=BG_CARD,
                  fg=FG_TEXT, font=("Segoe UI", 10, "bold")).pack(anchor="w")
 
@@ -293,11 +308,11 @@ class DiskMonitorApp:
             tk.Label(row, text=f"{name}:", bg=BG_CARD, fg=FG_DIM,
                      font=("Segoe UI", 9), width=12, anchor="w").pack(side="left")
             lbl = tk.Label(row, text="--", bg=BG_CARD, fg=FG_TEXT,
-                           font=("Segoe UI", 9, "bold"), wraplength=200, anchor="w")
+                           font=("Segoe UI", 9, "bold"), anchor="w")
             lbl.pack(side="left", fill="x")
             self.detail_labels[key] = lbl
 
-        # ─── 하단: 폴더별 크기 목록 ───
+        # ─── 하단: 폴더 목록 ───
         list_header = tk.Frame(self.root, bg=BG_DARK, pady=4)
         list_header.pack(fill="x", padx=16)
 
@@ -306,7 +321,6 @@ class DiskMonitorApp:
             bg=BG_DARK, fg=FG_TEXT, font=("Segoe UI", 11, "bold"))
         self.folder_title.pack(side="left")
 
-        # 검색
         search_frame = tk.Frame(list_header, bg=BG_DARK)
         search_frame.pack(side="right")
         tk.Label(search_frame, text="검색:", bg=BG_DARK, fg=FG_DIM,
@@ -319,19 +333,6 @@ class DiskMonitorApp:
         # 트리뷰
         tree_frame = tk.Frame(self.root, bg=BG_DARK)
         tree_frame.pack(fill="both", expand=True, padx=12, pady=(0, 8))
-
-        style = ttk.Style()
-        style.theme_use("clam")
-        style.configure("Dark.Treeview",
-                         background=BG_CARD, foreground=FG_TEXT,
-                         fieldbackground=BG_CARD, rowheight=26,
-                         font=("Segoe UI", 9))
-        style.configure("Dark.Treeview.Heading",
-                         background=BG_HEADER, foreground=FG_ACCENT,
-                         font=("Segoe UI", 9, "bold"), relief="flat")
-        style.map("Dark.Treeview",
-                   background=[("selected", "#45475a")],
-                   foreground=[("selected", "white")])
 
         columns = ("name", "size", "bar", "path")
         self.tree = ttk.Treeview(tree_frame, columns=columns,
@@ -363,7 +364,7 @@ class DiskMonitorApp:
                                       font=("Segoe UI", 8))
         self.status_label.pack(side="left", padx=10)
 
-    # ─── 드라이브 카드 생성 ───────────────────────────────────────────
+    # ─── 드라이브 카드 ─────────────────────────────────────────────
     def _refresh_drives(self):
         """드라이브 목록 새로 가져오기"""
         for w in self.drives_frame.winfo_children():
@@ -389,15 +390,12 @@ class DiskMonitorApp:
             }
             self._drives.append(drive_info)
 
-            # 드라이브 카드 UI
             color = DRIVE_COLORS[i % len(DRIVE_COLORS)]
             card = tk.Frame(self.drives_frame, bg=BG_CARD, padx=14, pady=10,
                             cursor="hand2")
             card.pack(side="left", fill="both", expand=True, padx=4)
 
-            drive_label = part.mountpoint.rstrip("\\")
-            if not drive_label:
-                drive_label = part.device
+            drive_label = part.mountpoint.rstrip("\\") or part.device
 
             tk.Label(card, text=f"  {drive_label}", bg=BG_CARD, fg=color,
                      font=("Segoe UI", 14, "bold")).pack(anchor="w")
@@ -408,18 +406,19 @@ class DiskMonitorApp:
             tk.Label(card, text=f"{usage.percent:.1f}% 사용", bg=BG_CARD,
                      fg=pct_color, font=("Segoe UI", 11, "bold")).pack(anchor="w")
 
-            # 간단한 바
-            bar = tk.Canvas(card, bg=BG_CARD, highlightthickness=0)
-            bar.configure(width=160, height=14)
-            bar.pack(fill="x", pady=(4, 2))
-            self.root.after(50, lambda b=bar, p=usage.percent: draw_bar(b, p, 160, 14))
+            # 텍스트 기반 프로그레스 바 (Canvas 대신 Label 사용)
+            pct_int = int(usage.percent)
+            bar_filled = "\u2588" * (pct_int // 5)
+            bar_empty = "\u2591" * (20 - pct_int // 5)
+            bar_color = get_color_for_percent(usage.percent)
+            tk.Label(card, text=bar_filled + bar_empty, bg=BG_CARD, fg=bar_color,
+                     font=("Consolas", 9)).pack(anchor="w", pady=(2, 0))
 
             tk.Label(card, text=f"{format_bytes(usage.used)} / {format_bytes(usage.total)}",
                      bg=BG_CARD, fg=FG_DIM, font=("Segoe UI", 8)).pack(anchor="w")
             tk.Label(card, text=f"{format_bytes(usage.free)} 여유",
                      bg=BG_CARD, fg=FG_GREEN, font=("Segoe UI", 8)).pack(anchor="w")
 
-            # 클릭 이벤트
             mp = part.mountpoint
             card.bind("<Button-1>", lambda e, m=mp: self._on_drive_click(m))
             for child in card.winfo_children():
@@ -440,16 +439,14 @@ class DiskMonitorApp:
         if not self._drives:
             return
 
-        # 파이차트 데이터
         pie_data = []
         for i, d in enumerate(self._drives):
             label = d["mountpoint"].rstrip("\\") or d["device"]
             color = DRIVE_COLORS[i % len(DRIVE_COLORS)]
             pie_data.append((label, d["used"], color))
-
         draw_pie(self.pie_canvas, pie_data, self.PIE_SIZE)
 
-        # 파이 범례
+        # 범례
         for w in self.pie_legend.winfo_children():
             w.destroy()
         for i, d in enumerate(self._drives):
@@ -462,7 +459,7 @@ class DiskMonitorApp:
             tk.Label(row, text=f" {label}  {format_bytes(d['used'])} / {format_bytes(d['total'])}",
                      bg=BG_CARD, fg=FG_TEXT, font=("Segoe UI", 8)).pack(side="left")
 
-        # 막대차트 데이터
+        # 막대차트
         bar_data = []
         for i, d in enumerate(self._drives):
             label = d["mountpoint"].rstrip("\\") or d["device"]
@@ -470,14 +467,13 @@ class DiskMonitorApp:
             bar_data.append((label, d["percent"], color))
 
         chart_h = max(self.CHART_H, len(bar_data) * 36 + 20)
-        self.chart_canvas.configure(height=chart_h)
+        self.chart_canvas.config(height=chart_h)
         draw_bar_chart(self.chart_canvas, bar_data, self.CHART_W, chart_h)
 
     def _on_drive_click(self, mountpoint):
-        """드라이브 카드 클릭 시"""
+        """드라이브 클릭 시 상세 표시 + 폴더 스캔"""
         self._selected_drive.set(mountpoint)
 
-        # 상세 정보 업데이트
         drive = None
         for d in self._drives:
             if d["mountpoint"] == mountpoint:
@@ -501,8 +497,8 @@ class DiskMonitorApp:
         self.detail_labels["mount"].config(text=drive["mountpoint"])
         self.detail_labels["opts"].config(text=drive["opts"])
 
-        # 폴더 스캔 시작
-        self.folder_title.config(text=f"{label} 드라이브 - 폴더/파일별 크기 (스캔 준비 중...)")
+        self.folder_title.config(
+            text=f"{label} 드라이브 - 폴더/파일별 크기 (스캔 준비 중...)")
         self._scan_drive(mountpoint)
 
     def _scan_drive(self, mountpoint):
@@ -513,7 +509,6 @@ class DiskMonitorApp:
         label = mountpoint.rstrip("\\") or mountpoint
 
         def update_progress(current, total, folder_name, phase):
-            """메인 스레드에서 진행률 UI 업데이트"""
             if phase == "list":
                 self.folder_title.config(
                     text=f"{label} 드라이브 - 폴더 목록 수집 중... ({current}개 발견)")
@@ -526,46 +521,47 @@ class DiskMonitorApp:
                     text=f"{label} 드라이브 - 정밀 스캔 중... "
                          f"[{bar}] {current}/{total} ({pct}%) - {folder_name}")
                 self.status_label.config(
-                    text=f"스캔: {folder_name} 분석 중... "
-                         f"({current}/{total})")
+                    text=f"스캔: {folder_name} 분석 중... ({current}/{total})")
 
         def do_scan():
-            # 1단계: 폴더 목록 수집
-            self.root.after(0, update_progress, 0, 0, "", "list")
-            folders = get_top_folders(mountpoint)
-            self.root.after(0, update_progress, len(folders), 0, "", "list")
+            try:
+                self.root.after(0, update_progress, 0, 0, "", "list")
+                folders = get_top_folders(mountpoint)
+                self.root.after(0, update_progress, len(folders), 0, "", "list")
 
-            # 2단계: 상위 폴더 정밀 스캔 (진행률 표시)
-            scan_targets = [f for f in folders[:15] if os.path.isdir(f["path"])]
-            total = len(scan_targets)
+                scan_targets = [f for f in folders[:15] if os.path.isdir(f["path"])]
+                total = len(scan_targets)
 
-            for idx, f in enumerate(scan_targets):
-                if not self._running:
-                    break
-                name = f["name"]
-                self.root.after(0, update_progress, idx + 1, total, name, "deep")
-                f["size"] = get_folder_size_deep(f["path"])
-                # 스캔 중간에도 목록 업데이트
+                for idx, f in enumerate(scan_targets):
+                    if not self._running:
+                        break
+                    name = f["name"]
+                    self.root.after(0, update_progress, idx + 1, total, name, "deep")
+                    f["size"] = get_folder_size_deep(f["path"])
+                    folders.sort(key=lambda x: x["size"], reverse=True)
+                    self._folder_data = list(folders)
+                    self.root.after(0, self._update_folder_list)
+
                 folders.sort(key=lambda x: x["size"], reverse=True)
-                self._folder_data = list(folders)
+                self._folder_data = folders
+                self._scanning = False
                 self.root.after(0, self._update_folder_list)
-
-            folders.sort(key=lambda x: x["size"], reverse=True)
-            self._folder_data = folders
-            self._scanning = False
-            self.root.after(0, self._update_folder_list)
-            self.root.after(0, lambda: self.folder_title.config(
-                text=f"{label} 드라이브 - 폴더/파일별 크기 (스캔 완료)"))
-            self.root.after(0, lambda: self.status_label.config(
-                text=f"스캔 완료: {label} | {len(folders)}개 항목 | "
-                     f"{time.strftime('%H:%M:%S')}"))
+                self.root.after(0, lambda: self.folder_title.config(
+                    text=f"{label} 드라이브 - 폴더/파일별 크기 (스캔 완료)"))
+                self.root.after(0, lambda: self.status_label.config(
+                    text=f"스캔 완료: {label} | {len(folders)}개 항목 | "
+                         f"{time.strftime('%H:%M:%S')}"))
+            except Exception as e:
+                self._scanning = False
+                self.root.after(0, lambda: self.status_label.config(
+                    text=f"스캔 오류: {e}"))
 
         t = threading.Thread(target=do_scan, daemon=True)
         t.start()
 
     def _update_folder_list(self):
         """폴더 목록 트리뷰 업데이트"""
-        folders = self._folder_data
+        folders = list(self._folder_data)
         search = self._search_var.get().lower()
         if search:
             folders = [f for f in folders if search in f["name"].lower()]
@@ -578,7 +574,6 @@ class DiskMonitorApp:
         sort_fn = key_map.get(self._sort_col, key_map["size"])
         folders = sorted(folders, key=sort_fn, reverse=self._sort_reverse)
 
-        # 최대 크기 (바 비율용)
         max_size = max((f["size"] for f in folders), default=1) or 1
 
         self.tree.delete(*self.tree.get_children())
@@ -602,7 +597,6 @@ class DiskMonitorApp:
             self._sort_reverse = col == "size"
         self._update_folder_list()
 
-    # ─── 주기적 업데이트 ──────────────────────────────────────────────
     def _start_update(self):
         """30초마다 드라이브 정보 갱신"""
         if not self._running:
@@ -629,6 +623,7 @@ class DiskMonitorApp:
 
 
 def main():
+    # Windows DPI (Tk 생성 전)
     try:
         from ctypes import windll
         windll.shcore.SetProcessDpiAwareness(1)
@@ -636,8 +631,18 @@ def main():
         pass
 
     root = tk.Tk()
-    DiskMonitorApp(root)
-    root.mainloop()
+    try:
+        app = DiskMonitorApp(root)
+        root.mainloop()
+    except Exception as e:
+        # GUI 실패 시 에러를 콘솔에 출력
+        traceback.print_exc()
+        try:
+            from tkinter import messagebox
+            messagebox.showerror("오류", f"프로그램 실행 중 오류:\n{e}")
+        except Exception:
+            pass
+        input("엔터를 눌러 종료하세요...")
 
 
 if __name__ == "__main__":
