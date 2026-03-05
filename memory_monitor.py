@@ -251,6 +251,7 @@ class DiskMonitorApp:
         self.root.update_idletasks()
         self._refresh_drives()
         self._start_update()
+        self._start_heartbeat()
 
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -375,10 +376,22 @@ class DiskMonitorApp:
         # 상태바
         status_bar = tk.Frame(self.root, bg=BG_HEADER, pady=3)
         status_bar.pack(fill="x", side="bottom")
+
+        # 활성 표시기 (깜빡이는 점)
+        self._heartbeat_on = True
+        self._heartbeat_label = tk.Label(
+            status_bar, text="\u25cf", bg=BG_HEADER, fg=FG_GREEN,
+            font=("Segoe UI", 10))
+        self._heartbeat_label.pack(side="left", padx=(10, 0))
+        self._heartbeat_text = tk.Label(
+            status_bar, text="동작 중", bg=BG_HEADER, fg=FG_GREEN,
+            font=("Segoe UI", 8))
+        self._heartbeat_text.pack(side="left", padx=(2, 6))
+
         self.status_label = tk.Label(status_bar, text="준비 중...",
                                       bg=BG_HEADER, fg=FG_DIM,
                                       font=("Segoe UI", 8))
-        self.status_label.pack(side="left", padx=10)
+        self.status_label.pack(side="left", padx=4)
 
     # ─── 드라이브 카드 ─────────────────────────────────────────────
     def _refresh_drives(self):
@@ -694,6 +707,19 @@ class DiskMonitorApp:
             except (PermissionError, OSError):
                 continue
         self._update_charts()
+
+    def _start_heartbeat(self):
+        """상태바의 활성 표시기를 주기적으로 깜빡여 프로그램 동작을 표시"""
+        if not self._running:
+            return
+        self._heartbeat_on = not self._heartbeat_on
+        if self._heartbeat_on:
+            self._heartbeat_label.config(fg=FG_GREEN)
+            self._heartbeat_text.config(fg=FG_GREEN)
+        else:
+            self._heartbeat_label.config(fg=FG_DIM)
+            self._heartbeat_text.config(fg=FG_DIM)
+        self.root.after(800, self._start_heartbeat)
 
     def _on_close(self):
         self._running = False
