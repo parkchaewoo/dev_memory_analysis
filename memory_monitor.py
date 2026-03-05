@@ -22,28 +22,28 @@ except ImportError:
     import psutil
 
 
-# ─── 색상/스타일 상수 (밝은 파스텔 테마) ──────────────────────────────
-BG_DARK = "#faf5ff"       # 연한 라벤더 배경
+# ─── 색상/스타일 상수 (Claude 테마 - 따뜻한 베이지/테라코타) ─────────
+BG_DARK = "#f5f0e8"       # 따뜻한 베이지 배경
 BG_CARD = "#ffffff"       # 흰색 카드
-BG_HEADER = "#e8def8"     # 연보라 헤더
-FG_TEXT = "#3b3145"       # 진한 보라 텍스트
-FG_DIM = "#9585a8"        # 연한 보라 보조 텍스트
-FG_ACCENT = "#7c4dff"     # 포인트 보라
-FG_GREEN = "#4caf50"      # 초록
-FG_RED = "#e91e63"        # 핑크 레드
-FG_YELLOW = "#ff9800"     # 주황
-FG_PEACH = "#ff7043"      # 피치
-FG_MAUVE = "#ab47bc"      # 모브
-FG_TEAL = "#00bcd4"       # 틸
-FG_SKY = "#29b6f6"        # 하늘
-FG_PINK = "#f06292"       # 핑크
-BAR_BG = "#e0d6eb"        # 연보라 바 배경
-DRIVE_COLORS = [FG_ACCENT, FG_GREEN, FG_YELLOW, FG_PEACH, FG_MAUVE,
-                FG_TEAL, FG_SKY, FG_PINK, FG_RED]
+BG_HEADER = "#d97757"     # Claude 시그니처 테라코타/오렌지
+FG_TEXT = "#2d2d2d"       # 진한 차콜 텍스트
+FG_DIM = "#8b8680"        # 따뜻한 회색 보조 텍스트
+FG_ACCENT = "#d97757"     # Claude 오렌지
+FG_GREEN = "#3a9a5b"      # 자연 초록
+FG_RED = "#c4473a"        # 차분한 레드
+FG_YELLOW = "#c89220"     # 따뜻한 골드
+FG_PEACH = "#d97757"      # 테라코타
+FG_MAUVE = "#8b6fb0"      # 부드러운 보라
+FG_TEAL = "#3a8a8a"       # 차분한 틸
+FG_SKY = "#4a90b8"        # 차분한 블루
+FG_PINK = "#c06080"       # 로즈
+BAR_BG = "#e8e0d4"        # 베이지 바 배경
+DRIVE_COLORS = [FG_ACCENT, FG_GREEN, FG_SKY, FG_YELLOW, FG_MAUVE,
+                FG_TEAL, FG_PINK, FG_RED]
 
-# ─── 귀여운 폰트 (플랫폼별 폴백) ─────────────────────────────────────
-FONT_FAMILY = "Comic Sans MS"  # Windows 기본 귀여운 폰트
-FONT_MONO = "Comic Sans MS"    # 모노 대체
+# ─── 폰트 ────────────────────────────────────────────────────────────
+FONT_FAMILY = "Segoe UI"    # 깔끔한 시스템 폰트
+FONT_MONO = "Consolas"      # 모노스페이스
 
 
 def format_bytes(b):
@@ -292,10 +292,10 @@ class DiskMonitorApp:
                          fieldbackground=BG_CARD, rowheight=28,
                          font=(FONT_FAMILY, 9))
         style.configure("Light.Treeview.Heading",
-                         background=BG_HEADER, foreground=FG_ACCENT,
+                         background="#e8e0d4", foreground=FG_TEXT,
                          font=(FONT_FAMILY, 9, "bold"), relief="flat")
         style.map("Light.Treeview",
-                   background=[("selected", "#d1c4e9")],
+                   background=[("selected", "#f0d9cc")],
                    foreground=[("selected", FG_TEXT)])
 
     def _build_ui(self):
@@ -303,14 +303,14 @@ class DiskMonitorApp:
         header = tk.Frame(self.root, bg=BG_HEADER, pady=8)
         header.pack(fill="x")
         tk.Label(header, text="  Disk Usage Monitor", bg=BG_HEADER,
-                 fg=FG_ACCENT, font=(FONT_FAMILY, 16, "bold")).pack(side="left", padx=10)
-        tk.Button(header, text="새로고침", bg=BG_CARD, fg=FG_TEXT,
+                 fg="#ffffff", font=(FONT_FAMILY, 16, "bold")).pack(side="left", padx=10)
+        tk.Button(header, text="새로고침", bg="#c4623e", fg="#ffffff",
                   font=(FONT_FAMILY, 9), relief="flat", padx=12, pady=2,
-                  activebackground="#d1c4e9", activeforeground=FG_TEXT,
+                  activebackground="#b8553a", activeforeground="#ffffff",
                   command=self._refresh_drives).pack(side="right", padx=16)
-        tk.Button(header, text="TXT 내보내기", bg=BG_CARD, fg=FG_TEXT,
+        tk.Button(header, text="TXT 내보내기", bg="#c4623e", fg="#ffffff",
                   font=(FONT_FAMILY, 9), relief="flat", padx=12, pady=2,
-                  activebackground="#d1c4e9", activeforeground=FG_TEXT,
+                  activebackground="#b8553a", activeforeground="#ffffff",
                   command=self._export_txt).pack(side="right", padx=4)
 
         # ─── 상단: 드라이브 카드들 ───
@@ -410,22 +410,23 @@ class DiskMonitorApp:
         self.tree.bind("<Double-1>", self._on_tree_double_click)
 
         # 상태바
-        status_bar = tk.Frame(self.root, bg=BG_HEADER, pady=3)
+        _SB_BG = "#e8e0d4"
+        status_bar = tk.Frame(self.root, bg=_SB_BG, pady=3)
         status_bar.pack(fill="x", side="bottom")
 
         # 활성 표시기 (깜빡이는 점)
         self._heartbeat_on = True
         self._heartbeat_label = tk.Label(
-            status_bar, text="\u25cf", bg=BG_HEADER, fg=FG_GREEN,
+            status_bar, text="\u25cf", bg=_SB_BG, fg=FG_GREEN,
             font=(FONT_FAMILY, 10))
         self._heartbeat_label.pack(side="left", padx=(10, 0))
         self._heartbeat_text = tk.Label(
-            status_bar, text="동작 중", bg=BG_HEADER, fg=FG_GREEN,
+            status_bar, text="동작 중", bg=_SB_BG, fg=FG_GREEN,
             font=(FONT_FAMILY, 8))
         self._heartbeat_text.pack(side="left", padx=(2, 6))
 
         self.status_label = tk.Label(status_bar, text="준비 중...",
-                                      bg=BG_HEADER, fg=FG_DIM,
+                                      bg=_SB_BG, fg=FG_DIM,
                                       font=(FONT_FAMILY, 8))
         self.status_label.pack(side="left", padx=4)
 
