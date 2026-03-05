@@ -502,28 +502,63 @@ class DiskMonitorApp:
         self.detail_labels["opts"].config(text=drive["opts"])
 
         # 폴더 스캔 시작
-        self.folder_title.config(text=f"{label} 드라이브 - 폴더/파일별 크기 (스캔 중...)")
+        self.folder_title.config(text=f"{label} 드라이브 - 폴더/파일별 크기 (스캔 준비 중...)")
         self._scan_drive(mountpoint)
 
     def _scan_drive(self, mountpoint):
-        """별도 스레드에서 드라이브 폴더 스캔"""
+        """별도 스레드에서 드라이브 폴더 스캔 (진행률 표시)"""
         if self._scanning:
             return
         self._scanning = True
+        label = mountpoint.rstrip("\\") or mountpoint
+
+        def update_progress(current, total, folder_name, phase):
+            """메인 스레드에서 진행률 UI 업데이트"""
+            if phase == "list":
+                self.folder_title.config(
+                    text=f"{label} 드라이브 - 폴더 목록 수집 중... ({current}개 발견)")
+                self.status_label.config(
+                    text=f"스캔: {label} 폴더 목록 수집 중...")
+            elif phase == "deep":
+                pct = int(current / total * 100) if total > 0 else 0
+                bar = "\u2588" * (pct // 5) + "\u2591" * (20 - pct // 5)
+                self.folder_title.config(
+                    text=f"{label} 드라이브 - 정밀 스캔 중... "
+                         f"[{bar}] {current}/{total} ({pct}%) - {folder_name}")
+                self.status_label.config(
+                    text=f"스캔: {folder_name} 분석 중... "
+                         f"({current}/{total})")
 
         def do_scan():
+            # 1단계: 폴더 목록 수집
+            self.root.after(0, update_progress, 0, 0, "", "list")
             folders = get_top_folders(mountpoint)
-            # 상위 폴더들의 정확한 크기 측정
-            for f in folders[:15]:
-                if os.path.isdir(f["path"]):
-                    f["size"] = get_folder_size_deep(f["path"])
+            self.root.after(0, update_progress, len(folders), 0, "", "list")
+
+            # 2단계: 상위 폴더 정밀 스캔 (진행률 표시)
+            scan_targets = [f for f in folders[:15] if os.path.isdir(f["path"])]
+            total = len(scan_targets)
+
+            for idx, f in enumerate(scan_targets):
+                if not self._running:
+                    break
+                name = f["name"]
+                self.root.after(0, update_progress, idx + 1, total, name, "deep")
+                f["size"] = get_folder_size_deep(f["path"])
+                # 스캔 중간에도 목록 업데이트
+                folders.sort(key=lambda x: x["size"], reverse=True)
+                self._folder_data = list(folders)
+                self.root.after(0, self._update_folder_list)
+
             folders.sort(key=lambda x: x["size"], reverse=True)
             self._folder_data = folders
             self._scanning = False
-            label = mountpoint.rstrip("\\") or mountpoint
             self.root.after(0, self._update_folder_list)
             self.root.after(0, lambda: self.folder_title.config(
-                text=f"{label} 드라이브 - 폴더/파일별 크기"))
+                text=f"{label} 드라이브 - 폴더/파일별 크기 (스캔 완료)"))
+            self.root.after(0, lambda: self.status_label.config(
+                text=f"스캔 완료: {label} | {len(folders)}개 항목 | "
+                     f"{time.strftime('%H:%M:%S')}"))
 
         t = threading.Thread(target=do_scan, daemon=True)
         t.start()
