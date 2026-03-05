@@ -57,8 +57,8 @@ class GradientBar(tk.Canvas):
     """그라데이션 프로그레스 바"""
 
     def __init__(self, master, width=300, height=22, **kwargs):
-        super().__init__(master, width=width, height=height,
-                         bg=BG_CARD, highlightthickness=0, **kwargs)
+        super().__init__(master, bg=BG_CARD, highlightthickness=0, **kwargs)
+        self.configure(width=width, height=height)
         self._width = width
         self._height = height
         self._value = 0
@@ -95,8 +95,8 @@ class PieChart(tk.Canvas):
     """메모리 분포 파이 차트"""
 
     def __init__(self, master, size=220, **kwargs):
-        super().__init__(master, width=size, height=size,
-                         bg=BG_CARD, highlightthickness=0, **kwargs)
+        super().__init__(master, bg=BG_CARD, highlightthickness=0, **kwargs)
+        self.configure(width=size, height=size)
         self._size = size
         self._data = []
 
@@ -132,8 +132,8 @@ class HistoryGraph(tk.Canvas):
     """메모리 사용률 히스토리 그래프"""
 
     def __init__(self, master, width=400, height=120, **kwargs):
-        super().__init__(master, width=width, height=height,
-                         bg=BG_CARD, highlightthickness=0, **kwargs)
+        super().__init__(master, bg=BG_CARD, highlightthickness=0, **kwargs)
+        self.configure(width=width, height=height)
         self._w = width
         self._h = height
         self._history = []
