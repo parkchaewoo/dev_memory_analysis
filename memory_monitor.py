@@ -22,24 +22,24 @@ except ImportError:
     import psutil
 
 
-# ─── 색상/스타일 상수 (Claude 테마 - 따뜻한 베이지/테라코타) ─────────
-BG_DARK = "#f5f0e8"       # 따뜻한 베이지 배경
+# ─── 색상/스타일 상수 (Claude Code 테마) ──────────────────────────────
+BG_DARK = "#f9f5ef"       # 크림 배경 (Claude 대화 배경)
 BG_CARD = "#ffffff"       # 흰색 카드
-BG_HEADER = "#d97757"     # Claude 시그니처 테라코타/오렌지
-FG_TEXT = "#2d2d2d"       # 진한 차콜 텍스트
-FG_DIM = "#8b8680"        # 따뜻한 회색 보조 텍스트
-FG_ACCENT = "#d97757"     # Claude 오렌지
-FG_GREEN = "#3a9a5b"      # 자연 초록
-FG_RED = "#c4473a"        # 차분한 레드
-FG_YELLOW = "#c89220"     # 따뜻한 골드
-FG_PEACH = "#d97757"      # 테라코타
-FG_MAUVE = "#8b6fb0"      # 부드러운 보라
-FG_TEAL = "#3a8a8a"       # 차분한 틸
-FG_SKY = "#4a90b8"        # 차분한 블루
-FG_PINK = "#c06080"       # 로즈
-BAR_BG = "#e8e0d4"        # 베이지 바 배경
+BG_HEADER = "#292524"     # 거의 검정 헤더 (Claude Code 상단바)
+FG_TEXT = "#1c1917"       # 진한 텍스트
+FG_DIM = "#a8a29e"        # 따뜻한 회색 보조 텍스트
+FG_ACCENT = "#c2410c"     # Claude 오렌지 (링크/강조)
+FG_GREEN = "#16a34a"      # 성공/여유 초록
+FG_RED = "#dc2626"        # 경고 레드
+FG_YELLOW = "#ca8a04"     # 주의 골드
+FG_PEACH = "#ea580c"      # 오렌지
+FG_MAUVE = "#0284c7"      # 블루 (보라 제거)
+FG_TEAL = "#0d9488"       # 틸
+FG_SKY = "#0369a1"        # 딥 블루
+FG_PINK = "#be185d"       # 로즈
+BAR_BG = "#e7e5e4"        # 연한 그레이 바 배경
 DRIVE_COLORS = [FG_ACCENT, FG_GREEN, FG_SKY, FG_YELLOW, FG_MAUVE,
-                FG_TEAL, FG_PINK, FG_RED]
+                FG_TEAL, FG_PINK, FG_PEACH]
 
 # ─── 폰트 ────────────────────────────────────────────────────────────
 FONT_FAMILY = "Segoe UI"    # 깔끔한 시스템 폰트
@@ -292,10 +292,10 @@ class DiskMonitorApp:
                          fieldbackground=BG_CARD, rowheight=28,
                          font=(FONT_FAMILY, 9))
         style.configure("Light.Treeview.Heading",
-                         background="#e8e0d4", foreground=FG_TEXT,
+                         background="#f5f5f4", foreground=FG_TEXT,
                          font=(FONT_FAMILY, 9, "bold"), relief="flat")
         style.map("Light.Treeview",
-                   background=[("selected", "#f0d9cc")],
+                   background=[("selected", "#fed7aa")],
                    foreground=[("selected", FG_TEXT)])
 
     def _build_ui(self):
@@ -303,14 +303,14 @@ class DiskMonitorApp:
         header = tk.Frame(self.root, bg=BG_HEADER, pady=8)
         header.pack(fill="x")
         tk.Label(header, text="  Disk Usage Monitor", bg=BG_HEADER,
-                 fg="#ffffff", font=(FONT_FAMILY, 16, "bold")).pack(side="left", padx=10)
-        tk.Button(header, text="새로고침", bg="#c4623e", fg="#ffffff",
+                 fg="#fafaf9", font=(FONT_FAMILY, 16, "bold")).pack(side="left", padx=10)
+        tk.Button(header, text="새로고침", bg="#44403c", fg="#fafaf9",
                   font=(FONT_FAMILY, 9), relief="flat", padx=12, pady=2,
-                  activebackground="#b8553a", activeforeground="#ffffff",
+                  activebackground="#57534e", activeforeground="#fafaf9",
                   command=self._refresh_drives).pack(side="right", padx=16)
-        tk.Button(header, text="TXT 내보내기", bg="#c4623e", fg="#ffffff",
+        tk.Button(header, text="TXT 내보내기", bg="#44403c", fg="#fafaf9",
                   font=(FONT_FAMILY, 9), relief="flat", padx=12, pady=2,
-                  activebackground="#b8553a", activeforeground="#ffffff",
+                  activebackground="#57534e", activeforeground="#fafaf9",
                   command=self._export_txt).pack(side="right", padx=4)
 
         # ─── 상단: 드라이브 카드들 ───
@@ -410,7 +410,7 @@ class DiskMonitorApp:
         self.tree.bind("<Double-1>", self._on_tree_double_click)
 
         # 상태바
-        _SB_BG = "#e8e0d4"
+        _SB_BG = "#f5f5f4"
         status_bar = tk.Frame(self.root, bg=_SB_BG, pady=3)
         status_bar.pack(fill="x", side="bottom")
 
