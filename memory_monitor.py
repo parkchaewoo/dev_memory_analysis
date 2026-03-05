@@ -149,7 +149,8 @@ def make_canvas(parent, w, h):
 # ─── 폴더 크기 스캔 ──────────────────────────────────────────────────
 
 def get_top_folders(path):
-    """드라이브 루트의 최상위 폴더별 크기 측정 (빠른 1단계)"""
+    """드라이브 루트의 최상위 폴더별 크기 측정 (빠른 1단계)
+    각 폴더의 하위 디렉토리/파일 수도 함께 세어 ETA 사전 추정에 사용"""
     folders = []
     try:
         entries = list(os.scandir(path))
@@ -159,13 +160,16 @@ def get_top_folders(path):
     for entry in entries:
         if entry.is_dir(follow_symlinks=False):
             total_size = 0
+            sub_count = 0  # 하위 항목 수 (깊이 추정용)
             try:
                 for sub in os.scandir(entry.path):
+                    sub_count += 1
                     try:
                         if sub.is_file(follow_symlinks=False):
                             total_size += sub.stat().st_size
                         elif sub.is_dir(follow_symlinks=False):
                             for subsub in os.scandir(sub.path):
+                                sub_count += 1
                                 try:
                                     if subsub.is_file(follow_symlinks=False):
                                         total_size += subsub.stat().st_size
@@ -174,18 +178,30 @@ def get_top_folders(path):
                     except (PermissionError, OSError):
                         continue
                 folders.append({"name": entry.name, "path": entry.path,
-                                "size": total_size})
+                                "size": total_size, "sub_count": sub_count})
             except (PermissionError, OSError):
                 continue
         elif entry.is_file(follow_symlinks=False):
             try:
                 folders.append({"name": entry.name, "path": entry.path,
-                                "size": entry.stat().st_size})
+                                "size": entry.stat().st_size, "sub_count": 0})
             except (PermissionError, OSError):
                 continue
 
     folders.sort(key=lambda x: x["size"], reverse=True)
     return folders[:20]
+
+
+def estimate_scan_time(folders):
+    """사전 측정된 하위 항목 수를 기반으로 정밀 스캔 예상 시간 계산
+    경험적 수치: 2단계 스캔에서 발견된 항목당 실제로는 약 10~50배 더 많은
+    하위 항목이 존재하므로, 항목당 약 0.001초로 추정"""
+    total_items = sum(f.get("sub_count", 0) for f in folders)
+    # 2단계 스캔에서 본 항목은 전체의 일부이므로 배수 적용
+    estimated_deep_items = total_items * 20
+    # 파일 하나당 약 0.0005초 (디스크 속도에 따라 다름)
+    estimated_seconds = estimated_deep_items * 0.0005
+    return max(1, estimated_seconds), total_items
 
 
 def get_folder_size_deep(path):
@@ -530,6 +546,14 @@ class DiskMonitorApp:
                          f"({current}개 발견)")
                 self.status_label.config(
                     text=f"스캔: {label} 폴더 목록 수집 중...")
+            elif phase == "estimate":
+                self.folder_title.config(
+                    text=f"{label} 드라이브 - 정밀 스캔 시작 "
+                         f"({total}개 폴더, 하위 약 {current:,}개 항목 감지) "
+                         f"| 예상 소요: {eta_str}")
+                self.status_label.config(
+                    text=f"사전 추정: 약 {current:,}개 항목 | "
+                         f"예상 소요 시간: {eta_str}")
             elif phase == "deep":
                 pct = int(current / total * 100) if total > 0 else 0
                 bar = "\u2588" * (pct // 5) + "\u2591" * (20 - pct // 5)
@@ -559,6 +583,14 @@ class DiskMonitorApp:
                 scan_targets = [f for f in folders[:15]
                                 if os.path.isdir(f["path"])]
                 total = len(scan_targets)
+
+                # 사전 추정: 정밀 스캔 전 예상 시간 표시
+                est_seconds, item_count = estimate_scan_time(scan_targets)
+                est_str = format_eta(est_seconds)
+                self.root.after(0, update_progress, item_count, total,
+                               "", "estimate", 0, est_str)
+                time.sleep(1.5)  # 사용자가 예상 시간을 읽을 수 있도록 잠시 대기
+
                 folder_times = []  # 각 폴더 스캔 소요 시간 기록
 
                 for idx, f in enumerate(scan_targets):
