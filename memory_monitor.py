@@ -225,6 +225,27 @@ def get_folder_size_deep(path):
     return total
 
 
+def get_sub_folders(path):
+    """지정 경로의 직접 하위 폴더/파일 목록과 크기 반환 (드릴다운용)"""
+    items = []
+    try:
+        for entry in os.scandir(path):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    size = get_folder_size_deep(entry.path)
+                    items.append({"name": entry.name, "path": entry.path,
+                                  "size": size, "is_dir": True})
+                elif entry.is_file(follow_symlinks=False):
+                    items.append({"name": entry.name, "path": entry.path,
+                                  "size": entry.stat().st_size, "is_dir": False})
+            except (PermissionError, OSError):
+                continue
+    except (PermissionError, OSError):
+        pass
+    items.sort(key=lambda x: x["size"], reverse=True)
+    return items
+
+
 # ─── 메인 애플리케이션 ────────────────────────────────────────────────
 
 class DiskMonitorApp:
@@ -249,6 +270,7 @@ class DiskMonitorApp:
         self._folder_data = []
         self._scanning = False
         self._drives = []
+        self._expanded_nodes = set()  # 이미 드릴다운한 노드 추적
 
         self._setup_styles()
         self._build_ui()
@@ -355,17 +377,20 @@ class DiskMonitorApp:
                  font=(FONT_FAMILY, 9), width=20,
                  relief="flat", bd=4).pack(side="left")
 
-        # 트리뷰
+        # 트리뷰 (계층 구조 - 드릴다운 지원)
         tree_frame = tk.Frame(self.root, bg=BG_DARK)
         tree_frame.pack(fill="both", expand=True, padx=12, pady=(0, 8))
 
-        columns = ("name", "size", "bar", "path")
+        columns = ("size", "bar", "path")
         self.tree = ttk.Treeview(tree_frame, columns=columns,
-                                  show="headings", style="Light.Treeview",
+                                  show="tree headings", style="Light.Treeview",
                                   selectmode="browse")
 
+        # #0 컬럼: 트리 구조 (이름 표시)
+        self.tree.heading("#0", text="이름", anchor="w")
+        self.tree.column("#0", width=250, anchor="w")
+
         col_config = [
-            ("name", "이름", 200, "w"),
             ("size", "크기", 120, "e"),
             ("bar", "비율", 200, "w"),
             ("path", "경로", 350, "w"),
@@ -380,6 +405,9 @@ class DiskMonitorApp:
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        # 더블클릭으로 하위 폴더 드릴다운
+        self.tree.bind("<Double-1>", self._on_tree_double_click)
 
         # 상태바
         status_bar = tk.Frame(self.root, bg=BG_HEADER, pady=3)
@@ -659,7 +687,7 @@ class DiskMonitorApp:
         t.start()
 
     def _update_folder_list(self):
-        """폴더 목록 트리뷰 업데이트"""
+        """폴더 목록 트리뷰 업데이트 (최상위 항목)"""
         folders = list(self._folder_data)
         search = self._search_var.get().lower()
         if search:
@@ -676,15 +704,93 @@ class DiskMonitorApp:
         max_size = max((f["size"] for f in folders), default=1) or 1
 
         self.tree.delete(*self.tree.get_children())
+        self._expanded_nodes.clear()
         for f in folders:
             pct = (f["size"] / max_size * 100) if max_size > 0 else 0
             bar_text = "\u2588" * int(pct / 5) + "\u2591" * (20 - int(pct / 5))
-            self.tree.insert("", "end", values=(
-                f["name"],
-                format_bytes(f["size"]),
-                bar_text,
-                f["path"],
-            ))
+            is_dir = os.path.isdir(f["path"])
+            prefix = "\U0001f4c1 " if is_dir else "\U0001f4c4 "
+            node_id = self.tree.insert("", "end", text=prefix + f["name"],
+                                       values=(
+                                           format_bytes(f["size"]),
+                                           bar_text,
+                                           f["path"],
+                                       ))
+            # 폴더면 더미 자식 추가 (펼침 화살표 표시용)
+            if is_dir:
+                self.tree.insert(node_id, "end", text="스캔 중...")
+
+    def _on_tree_double_click(self, event):
+        """트리뷰 항목 더블클릭 시 하위 폴더 드릴다운"""
+        item_id = self.tree.focus()
+        if not item_id:
+            return
+
+        values = self.tree.item(item_id, "values")
+        if not values or len(values) < 3:
+            return
+
+        folder_path = values[2]  # path 컬럼
+        if not os.path.isdir(folder_path):
+            return
+
+        # 이미 스캔한 노드면 토글만
+        if item_id in self._expanded_nodes:
+            if self.tree.item(item_id, "open"):
+                self.tree.item(item_id, open=False)
+            else:
+                self.tree.item(item_id, open=True)
+            return
+
+        # 더미 자식 제거 후 "스캔 중..." 표시
+        for child in self.tree.get_children(item_id):
+            self.tree.delete(child)
+        loading_id = self.tree.insert(item_id, "end",
+                                       text="  스캔 중...", values=("", "", ""))
+        self.tree.item(item_id, open=True)
+        self.status_label.config(
+            text=f"하위 폴더 스캔 중: {folder_path}")
+
+        def scan_sub():
+            sub_items = get_sub_folders(folder_path)
+            self.root.after(0, _insert_children, item_id, loading_id,
+                           sub_items, folder_path)
+
+        def _insert_children(parent_id, loading, items, path):
+            # 로딩 항목 제거
+            if self.tree.exists(loading):
+                self.tree.delete(loading)
+
+            if not items:
+                self.tree.insert(parent_id, "end",
+                                 text="  (비어 있음)", values=("", "", ""))
+                self._expanded_nodes.add(parent_id)
+                self.status_label.config(text=f"드릴다운 완료: {path} (비어 있음)")
+                return
+
+            max_size = max(i["size"] for i in items) or 1
+            for item in items:
+                pct = (item["size"] / max_size * 100) if max_size > 0 else 0
+                bar_text = ("\u2588" * int(pct / 5)
+                            + "\u2591" * (20 - int(pct / 5)))
+                if item.get("is_dir", False):
+                    prefix = "\U0001f4c1 "
+                else:
+                    prefix = "\U0001f4c4 "
+                child_id = self.tree.insert(
+                    parent_id, "end",
+                    text=prefix + item["name"],
+                    values=(format_bytes(item["size"]), bar_text, item["path"]))
+                # 하위 폴더면 더미 자식 추가 (추가 드릴다운 가능)
+                if item.get("is_dir", False):
+                    self.tree.insert(child_id, "end", text="스캔 중...")
+
+            self._expanded_nodes.add(parent_id)
+            self.status_label.config(
+                text=f"드릴다운 완료: {path} ({len(items)}개 항목)")
+
+        t = threading.Thread(target=scan_sub, daemon=True)
+        t.start()
 
     def _sort_by(self, col):
         if col == "bar":
