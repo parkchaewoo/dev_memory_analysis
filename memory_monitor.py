@@ -193,7 +193,7 @@ def get_top_folders(path):
                 continue
 
     folders.sort(key=lambda x: x["size"], reverse=True)
-    return folders[:20]
+    return folders
 
 
 def estimate_scan_time(folders):
@@ -630,7 +630,7 @@ class DiskMonitorApp:
                 folders = get_top_folders(mountpoint)
                 self.root.after(0, update_progress, len(folders), 0, "", "list")
 
-                scan_targets = [f for f in folders[:15]
+                scan_targets = [f for f in folders
                                 if os.path.isdir(f["path"])]
                 total = len(scan_targets)
 
@@ -674,6 +674,23 @@ class DiskMonitorApp:
                 total_str = format_eta(total_elapsed)
 
                 folders.sort(key=lambda x: x["size"], reverse=True)
+
+                # 스캔된 항목 합계 vs 실제 사용량 차이를 "기타/시스템" 항목으로 추가
+                try:
+                    usage = psutil.disk_usage(mountpoint)
+                    scanned_total = sum(f["size"] for f in folders)
+                    unscanned = usage.used - scanned_total
+                    if unscanned > 0:
+                        folders.append({
+                            "name": "(기타/시스템 파일)",
+                            "path": mountpoint,
+                            "size": unscanned,
+                            "sub_count": 0,
+                        })
+                        folders.sort(key=lambda x: x["size"], reverse=True)
+                except (PermissionError, OSError):
+                    pass
+
                 self._folder_data = folders
                 self._scanning = False
                 self.root.after(0, self._update_folder_list)
@@ -702,12 +719,18 @@ class DiskMonitorApp:
         sort_fn = key_map.get(self._sort_col, key_map["size"])
         folders = sorted(folders, key=sort_fn, reverse=self._sort_reverse)
 
-        max_size = max((f["size"] for f in folders), default=1) or 1
+        # 드라이브 전체 사용량 기준으로 비율 계산
+        drive_used = 1
+        mp = self._selected_drive.get()
+        for d in self._drives:
+            if d["mountpoint"] == mp:
+                drive_used = d["used"] or 1
+                break
 
         self.tree.delete(*self.tree.get_children())
         self._expanded_nodes.clear()
         for f in folders:
-            pct = (f["size"] / max_size * 100) if max_size > 0 else 0
+            pct = (f["size"] / drive_used * 100) if drive_used > 0 else 0
             bar_text = "\u2588" * int(pct / 5) + "\u2591" * (20 - int(pct / 5))
             is_dir = os.path.isdir(f["path"])
             prefix = "\U0001f4c1 " if is_dir else "\U0001f4c4 "
